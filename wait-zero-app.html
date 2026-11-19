@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>웨잇 제로 Wait-ZERO</title>
+<style>
+/* ===== 색상 토큰: 화이트 + 네이비 톤 (다크모드 대응) ===== */
+:root{--bg:#f4f6fb;--card:#fff;--navy:#0b2a5b;--on:#fff;--text:#14213d;--sub:#6b7691;--line:#e1e6f0;
+--ok:#12a150;--okbg:#e3f6ea;--run:#1b4fd1;--runbg:#e4ecff;--warn:#d9730d;--warnbg:#fff0dc;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a1226;--card:#121c38;--navy:#7fa4ff;--on:#0a1226;--text:#eef2ff;--sub:#9aa7c7;--line:#233157;--okbg:#10321f;--runbg:#16285a;--warnbg:#3a2610}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+.wrap{max-width:480px;margin:0 auto;padding:16px 14px 80px}
+h1{font-size:20px;color:var(--navy);margin:4px 0 2px}
+.desc{font-size:12.5px;color:var(--sub);margin:0 0 14px}
+.label{font-size:12px;color:var(--sub);margin:12px 0 6px;font-weight:600}
+/* 기숙사 큰 버튼 / 동·층 작은 버튼 */
+.big{display:flex;gap:8px}
+.big button{flex:1;padding:16px 4px;font-size:17px;font-weight:700;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--text)}
+.big button.on{background:var(--navy);border-color:var(--navy);color:var(--on)}
+.small{display:flex;flex-wrap:wrap;gap:6px}
+.small button{padding:8px 14px;font-size:14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--text)}
+.small button.on{border-color:var(--navy);color:var(--navy);font-weight:700;background:var(--runbg)}
+/* 요약 칩 */
+.sum{display:flex;gap:8px;margin:14px 0 4px}
+.sum div{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;font-size:12px;color:var(--sub)}
+.sum b{display:block;font-size:20px;color:var(--navy)}
+h2{font-size:15px;margin:18px 0 8px;color:var(--navy)}
+/* 기기 카드 */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.name{font-weight:700;font-size:15px}
+.badge{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px}
+.available .badge{background:var(--okbg);color:var(--ok)}
+.running .badge{background:var(--runbg);color:var(--run)}
+.pending .badge{background:var(--warnbg);color:var(--warn)}
+.info{font-size:13px;color:var(--sub);margin-top:8px;line-height:1.6}
+.info b{color:var(--text)}
+.remain{font-size:22px;font-weight:800;color:var(--run);font-variant-numeric:tabular-nums}
+.btn{margin-top:10px;width:100%;padding:11px;border-radius:10px;border:0;background:var(--navy);color:var(--on);font-size:14px;font-weight:700}
+.btn.ghost{background:transparent;border:1.5px solid var(--navy);color:var(--navy)}
+.notice{font-size:12px;color:var(--sub);background:var(--card);border:1px dashed var(--line);border-radius:10px;padding:10px;margin-top:10px;line-height:1.5}
+.wl{background:var(--warnbg);border-radius:12px;padding:12px;margin-bottom:8px;font-size:13px}
+/* 데모 패널 */
+.demo{margin-top:20px;padding:12px;border:1px dashed var(--line);border-radius:12px;font-size:12px;color:var(--sub)}
+.demo button{margin:6px 6px 0 0;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+.demo button.on{background:var(--navy);color:var(--on);border-color:var(--navy)}
+/* 사용 시작 시트 + 푸시 알림 토스트 */
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:20}
+#modal .sheet{background:var(--card);width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
+#toasts{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));left:0;right:0;z-index:30;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{background:var(--navy);color:var(--on);padding:10px 14px;border-radius:12px;font-size:13px;max-width:92%;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+</style>
+</head>
+<body>
+<div id="toasts"></div>
+<div class="wrap">
+  <h1>🧺 웨잇 제로 Wait-ZERO</h1>
+  <p class="desc">세탁실에 가기 전에, 기기 상태를 먼저 확인하세요.</p>
+  <div class="label">기숙사 선택</div><div class="big" id="dorms"></div>
+  <div class="label" id="zoneLabel">세부 구역</div><div class="small" id="zones"></div>
+  <div id="view"></div>
+  <div class="demo">
+    <b>프로토타입 데모 설정</b> (실제 스마트 플러그·결제 연동 대신 가상 데이터 사용)<br>
+    시간 속도:
+    <button data-sp="1">1배속</button><button data-sp="60">60배속</button><button data-sp="300">300배속</button>
+    <div class="notice" style="margin-top:8px">푸시 알림은 화면 상단 알림으로 대체 표시됩니다.</div>
+  </div>
+</div>
+<div id="modal"><div class="sheet" id="sheet"></div></div>
+
+<script>
+/* ===== 1. 기본 데이터 (PRD 기준) ===== */
+// 기숙사별 구역 및 기기 수 (w: 세탁기, d: 건조기)
+const DORMS = {
+  "혜초관": {zones:["남자 2층","여자 2층"], w:5, d:4},
+  "아라관": {zones:["3층","4층","5층","6층","7층","8층","9층"], w:2, d:1},
+  "누리관": {zones:["1동 지하","2동 지하","3동 지하","4동 지하"], w:2, d:2}
+};
+// 코스별 소요 시간(분)
+const COURSES = {washer:{"강력":50,"표준":50,"합섬":50,"올":48}, dryer:{"전체 코스":50}};
+const RINSE_EXTRA = 13;   // 헹굼 추가 시 +13분
+const PICKUP_LIMIT = 10;  // 종료 후 10분 내 수거 확인 없으면 푸시
+const MIN = 60000;
+
+/* ===== 2. 상태 ===== */
+let vnow = Date.now();    // 가상 시계 (데모 배속 반영)
+let speed = 1;
+let sel = {dorm:"혜초관", zone:"남자 2층"};
+const rooms = {};         // 세탁실별 기기 목록
+const waits = {};         // 빈 기기 알림 신청 (키: 세탁실|종류)
+
+// 저장된 기숙사/구역 불러오기 (저장소가 막혀 있으면 기본값 사용)
+try{const s=JSON.parse(localStorage.getItem("wz_sel")||"null"); if(s&&DORMS[s.dorm]&&DORMS[s.dorm].zones.includes(s.zone)) sel=s;}catch(e){}
+function saveSel(){try{localStorage.setItem("wz_sel",JSON.stringify(sel));}catch(e){}}
+
+/* ===== 3. 세탁실 기기 생성 (가상 초기 상태) ===== */
+function getRoom(){
+  const key = sel.dorm+"|"+sel.zone;
+  if(!rooms[key]){
+    const d = DORMS[sel.dorm], list=[];
+    const mk=(type,i)=>{
+      const m={id:key+type+i, type, label:(type==="washer"?"세탁기 ":"건조기 ")+(i+1), status:"available", mine:false, pushed:false};
+      const r=Math.random();
+      if(r<0.45){ // 작동 중: 시작 시각을 과거 임의 시점으로
+        m.status="running"; m.course=type==="washer"?"표준":"전체 코스"; m.rinse=false;
+        m.startAt = vnow - Math.floor(Math.random()*40)*MIN;
+        m.endAt = calcEnd(type,m.course,false,m.startAt);
+        m.powerEndAt = m.endAt + (Math.floor(Math.random()*9)-3)*MIN; // 전력 종료 시점(가상)
+      } else if(r<0.6){ // 수거 미확인
+        m.status="pending"; m.doneAt = vnow - Math.floor(Math.random()*8)*MIN;
+      }
+      return m;
+    };
+    for(let i=0;i<d.w;i++) list.push(mk("washer",i));
+    for(let i=0;i<d.d;i++) list.push(mk("dryer",i));
+    rooms[key]=list;
+  }
+  return {key, list:rooms[key]};
+}
+
+/* ===== 4. 예상 종료 시간 계산 =====
+   예상 종료 = 작동 시작 + 코스 소요 + 추가 옵션(헹굼 +13분) */
+function calcEnd(type, course, rinse, startAt){
+  return startAt + (COURSES[type][course] + (rinse?RINSE_EXTRA:0))*MIN;
+}
+const hhmm = t => new Date(t).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false});
+const mmss = ms => { const s=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
+
+/* ===== 5. 알림(토스트) ===== */
+function toast(msg){
+  const el=document.createElement("div"); el.className="toast"; el.textContent="🔔 "+msg;
+  document.getElementById("toasts").appendChild(el); setTimeout(()=>el.remove(),5000);
+}
+
+/* ===== 6. 실시간 상태 갱신 (1초마다) =====
+   예상 시간이 지나도 자동 '사용 가능' 처리하지 않음.
+   실제 종료는 전력 데이터(powerEndAt)로 판단 → '수거 미확인' 전환 */
+function tick(){
+  vnow += 1000*speed;
+  Object.values(rooms).forEach(list=>list.forEach(m=>{
+    if(m.status==="running" && vnow>=m.powerEndAt){ m.status="pending"; m.doneAt=m.powerEndAt; m.pushed=false; }
+    // 종료 10분 후에도 수거 확인이 없으면 이용자에게 푸시
+    if(m.status==="pending" && !m.pushed && vnow-m.doneAt>=PICKUP_LIMIT*MIN){
+      m.pushed=true; if(m.mine) toast(m.label+" 수거 확인을 부탁드려요. 종료 후 10분이 지났어요.");
+    }
+  }));
+  render();
+}
+
+/* ===== 7. 화면 그리기 ===== */
+function render(){
+  // 기숙사 큰 버튼
+  document.getElementById("dorms").innerHTML = Object.keys(DORMS).map(n=>`<button class="${n===sel.dorm?"on":""}" data-dorm="${n}">${n}</button>`).join("");
+  // 세부 구역 작은 버튼
+  document.getElementById("zoneLabel").textContent = sel.dorm==="혜초관"?"구역 선택":(sel.dorm==="아라관"?"층 선택":"동 선택");
+  document.getElementById("zones").innerHTML = DORMS[sel.dorm].zones.map(z=>`<button class="${z===sel.zone?"on":""}" data-zone="${z}">${z}</button>`).join("");
+  document.querySelectorAll(".demo button").forEach(b=>b.classList.toggle("on",+b.dataset.sp===speed));
+
+  const {key,list}=getRoom();
+  const ws=list.filter(m=>m.type==="washer"), ds=list.filter(m=>m.type==="dryer");
+  const av=a=>a.filter(m=>m.status==="available").length;
+  let h=`<div class="sum"><div>세탁기 사용 가능<b>${av(ws)}/${ws.length}</b></div><div>건조기 사용 가능<b>${av(ds)}/${ds.length}</b></div></div>`;
+  [["washer","세탁기",ws],["dryer","건조기",ds]].forEach(([type,title,arr])=>{
+    h+=`<h2>${title}</h2>`;
+    // 사용 가능한 기기가 없으면 빈 기기 알림 신청 영역 표시
+    if(av(arr)===0){
+      const wk=key+"|"+type;
+      h+=`<div class="wl">사용 가능한 ${title}가 없어요.<br>${waits[wk]?"✅ 알림 신청됨 · 빈 기기가 생기면 알려드려요.":"빈 기기가 생기면 알림을 받을 수 있어요."}<button class="btn ${waits[wk]?"ghost":""}" data-wait="${wk}">${waits[wk]?"알림 신청 취소":"빈 기기 알림 신청"}</button></div>`;
+    }
+    arr.forEach(m=>{ h+=cardHTML(m); });
+  });
+  h+=`<div class="notice">빈 기기 알림은 사용권을 보장하지 않으며, 다른 학생이 먼저 사용하면 상태가 바로 반영돼요. 수거 여부는 이용자의 직접 확인으로 반영돼요.</div>`;
+  document.getElementById("view").innerHTML=h;
+}
+
+// 기기 카드 하나 (상태별 표시)
+function cardHTML(m){
+  let badge, body="";
+  if(m.status==="available"){
+    badge="사용 가능";
+    body=`<button class="btn ghost" data-start="${m.id}">사용 시작 (데모)</button>`;
+  } else if(m.status==="running"){
+    badge="사용 중";
+    const left=m.endAt-vnow;
+    body=`<div class="info">코스 <b>${m.course}${m.rinse?" + 헹굼 추가":""}</b><br>예상 종료 <b>${hhmm(m.endAt)}</b></div>`+
+      (left>0?`<div class="remain">${mmss(left)} <span style="font-size:12px;font-weight:500;color:var(--sub)">남음</span></div>`
+             :`<div class="info" style="color:var(--warn)">예상 시간이 지났어요 · 전력 사용 중이라 종료 확인을 기다리는 중</div>`);
+  } else {
+    badge="수거 미확인";
+    body=`<div class="info">종료 후 <b>${Math.floor((vnow-m.doneAt)/MIN)}분</b> 경과 · 세탁물을 꺼낸 뒤 눌러주세요</div><button class="btn" data-collect="${m.id}">수거 확인</button>`;
+  }
+  return `<div class="card ${m.status}"><div class="row"><span class="name">${m.label}${m.mine?" · 내 기기":""}</span><span class="badge">${badge}</span></div>${body}</div>`;
+}
+
+/* ===== 8. 클릭 이벤트 처리 ===== */
+const find=id=>{for(const l of Object.values(rooms)){const m=l.find(x=>x.id===id); if(m) return m;}};
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button"); if(!t) return;
+  if(t.closest("#modal")) return;                                                                      // 시트 내부 버튼은 따로 처리
+  if(t.dataset.dorm){ sel={dorm:t.dataset.dorm, zone:DORMS[t.dataset.dorm].zones[0]}; saveSel(); }  // 기숙사 변경
+  else if(t.dataset.zone){ sel.zone=t.dataset.zone; saveSel(); }                                      // 구역 변경
+  else if(t.dataset.sp){ speed=+t.dataset.sp; }                                                       // 데모 배속 변경
+  else if(t.dataset.collect){                                                                           // 수거 확인 → 사용 가능
+    const m=find(t.dataset.collect); m.status="available"; m.mine=false; m.pushed=false;
+    const key=Object.keys(rooms).find(k=>rooms[k].includes(m)), wk=key+"|"+m.type;
+    if(waits[wk]){ delete waits[wk]; toast(m.label+"가 비었어요! (사용권은 보장되지 않아요)"); }      // 대기 신청자 알림
+  }
+  else if(t.dataset.wait){ const k=t.dataset.wait; if(waits[k]) delete waits[k]; else waits[k]=true; } // 알림 신청/취소
+  else if(t.dataset.start){ openStart(find(t.dataset.start)); return; }                               // 사용 시작 시트
+  render();
+});
+
+// 사용 시작 시트: 코스·헹굼 선택 → 예상 종료 시각 계산 (데모용)
+function openStart(m){
+  const courses=Object.keys(COURSES[m.type]);
+  let course=courses[0], rinse=false;
+  const sheet=document.getElementById("sheet"), modal=document.getElementById("modal");
+  const draw=()=>{
+    const mins=COURSES[m.type][course]+(rinse?RINSE_EXTRA:0);
+    sheet.innerHTML=`<b style="font-size:16px">${m.label} 사용 시작</b><div class="label">코스</div>
+    <div class="small">${courses.map(c=>`<button class="${c===course?"on":""}" data-c="${c}">${c} ${COURSES[m.type][c]}분</button>`).join("")}</div>
+    ${m.type==="washer"?`<div class="label">추가 옵션</div><div class="small"><button class="${rinse?"on":""}" data-r="1">헹굼 추가 +${RINSE_EXTRA}분</button></div>`:""}
+    <div class="info" style="margin-top:14px">예상 종료 <b>${hhmm(calcEnd(m.type,course,rinse,vnow))}</b> (총 ${mins}분)</div>
+    <button class="btn" id="go">시작하기</button><button class="btn ghost" id="cancel">닫기</button>`;
+    sheet.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{course=b.dataset.c;draw();});
+    const rb=sheet.querySelector("[data-r]"); if(rb) rb.onclick=()=>{rinse=!rinse;draw();};
+    sheet.querySelector("#cancel").onclick=()=>{modal.style.display="none";};
+    sheet.querySelector("#go").onclick=()=>{
+      m.status="running"; m.course=course; m.rinse=rinse; m.startAt=vnow; m.mine=true; m.pushed=false;
+      m.endAt=calcEnd(m.type,course,rinse,vnow);
+      m.powerEndAt=m.endAt+(Math.floor(Math.random()*5)-1)*MIN;  // 전력 종료 시점(가상)
+      modal.style.display="none"; render();
+    };
+  };
+  draw(); modal.style.display="flex";
+}
+
+setInterval(tick,1000); render();
+</script>
+</body>
+</html>
